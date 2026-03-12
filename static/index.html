@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Personal Health Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --border: #2a2d3e;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --red: #ff6b6b;
+    --green: #51cf66;
+    --yellow: #ffd43b;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 18px; font-weight: 700; color: var(--accent); }
+  header .subtitle { color: var(--muted); font-size: 12px; }
+  header .spacer { flex: 1; }
+  .date-filter { display: flex; align-items: center; gap: 8px; }
+  .date-filter label { color: var(--muted); font-size: 12px; }
+  .date-filter input {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 4px 8px; border-radius: 6px; font-size: 12px;
+  }
+  button {
+    background: var(--accent); color: #fff; border: none;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+    transition: opacity .15s;
+  }
+  button:hover { opacity: .85; }
+  button:disabled { opacity: .45; cursor: default; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-danger { background: var(--red); }
+
+  /* ── Layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Left panel ── */
+  .charts-panel {
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .charts-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  .card h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    margin-bottom: 10px;
+  }
+
+  .chart-wrap { position: relative; height: 180px; }
+
+  /* Lab results table */
+  .lab-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .lab-table th {
+    text-align: left; padding: 6px 8px;
+    color: var(--muted); font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .lab-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .lab-table tr:last-child td { border-bottom: none; }
+  .badge {
+    display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px;
+  }
+  .badge.ok { background: rgba(81,207,102,.15); color: var(--green); }
+  .badge.high { background: rgba(255,107,107,.15); color: var(--red); }
+  .badge.low { background: rgba(255,212,59,.15); color: var(--yellow); }
+
+  /* Stat strip */
+  .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .stat .val { font-size: 24px; font-weight: 700; color: var(--accent2); }
+  .stat .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Search */
+  .search-bar { display: flex; gap: 8px; }
+  .search-bar input {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 7px 12px; border-radius: 6px; font-size: 13px;
+  }
+  .search-results { margin-top: 10px; max-height: 200px; overflow-y: auto; }
+  .search-results table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .search-results th, .search-results td {
+    padding: 4px 6px; text-align: left;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-results th { color: var(--muted); }
+
+  /* ── Right panel — AI Chat ── */
+  .chat-panel {
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+  }
+
+  .chat-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chat-header h2 { font-size: 14px; font-weight: 600; }
+  .chat-header .ai-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent2); animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .chat-header .spacer { flex: 1; }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .msg {
+    max-width: 90%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    line-height: 1.5;
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+    border-bottom-right-radius: 3px;
+  }
+  .msg.model {
+    align-self: flex-start;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 3px;
+  }
+  .msg.system { align-self: center; color: var(--muted); font-size: 11px; font-style: italic; }
+
+  .chat-input-area {
+    padding: 12px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .chat-input-row { display: flex; gap: 8px; }
+  .chat-input-row textarea {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    resize: none;
+    height: 68px;
+    font-family: inherit;
+  }
+  .chat-input-row textarea:focus { outline: none; border-color: var(--accent); }
+  .chat-send-col { display: flex; flex-direction: column; gap: 6px; }
+  .quick-questions { display: flex; flex-wrap: wrap; gap: 4px; }
+  .quick-btn {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .quick-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* Empty state */
+  .empty { color: var(--muted); text-align: center; padding: 40px 0; font-size: 13px; }
+
+  /* Loading */
+  .loading { color: var(--accent); font-size: 12px; }
+  .spinner {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .6s linear infinite; margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div>
+    <h1>Health Dashboard</h1>
+    <div class="subtitle" id="dataRange">Indlæser data…</div>
+  </div>
+  <div class="date-filter">
+    <label>From</label>
+    <input type="date" id="startDate" />
+    <label>To</label>
+    <input type="date" id="endDate" />
+    <button onclick="applyDateFilter()">Apply</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="etlBtn" class="btn-secondary" onclick="triggerETL()">⟳ Run ETL</button>
+</header>
+
+<!-- ── Main layout ── -->
+<div class="layout">
+
+  <!-- Left: charts + stats -->
+  <div class="charts-panel">
+
+    <!-- Stat strip -->
+    <div class="stat-strip" id="statStrip">
+      <div class="stat"><div class="val" id="stat-steps">—</div><div class="lbl">Steps (7d avg.)</div></div>
+      <div class="stat"><div class="val" id="stat-sleep">—</div><div class="lbl">Sleep min (7d avg.)</div></div>
+      <div class="stat"><div class="val" id="stat-hr">—</div><div class="lbl">Resting HR (7d avg.)</div></div>
+      <div class="stat"><div class="val" id="stat-wellness">—</div><div class="lbl">Wellness Score</div></div>
+    </div>
+
+    <!-- Charts 2×3 grid -->
+    <div class="charts-grid">
+      <div class="card">
+        <h3>Daily Steps</h3>
+        <div class="chart-wrap"><canvas id="stepsChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Sleep</h3>
+        <div class="chart-wrap"><canvas id="sleepChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Heart Rate</h3>
+        <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Stress</h3>
+        <div class="chart-wrap"><canvas id="stressChart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Blood Oxygen (SpO₂)</h3>
+        <div class="chart-wrap"><canvas id="spo2Chart"></canvas></div>
+      </div>
+      <div class="card">
+        <h3>Wellness Score</h3>
+        <div class="chart-wrap"><canvas id="wellnessChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Lab results -->
+    <div class="card">
+      <h3>Lab Results</h3>
+      <div id="labTable"><div class="empty">No lab data</div></div>
+    </div>
+
+    <!-- Search -->
+    <div class="card">
+      <h3>Search Health Data</h3>
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="Search e.g. cholesterol, influenza, back…"
+               onkeydown="if(event.key==='Enter') searchData()" />
+        <button onclick="searchData()">Search</button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+  </div>
+
+  <!-- Right: AI Chat -->
+  <div class="chat-panel">
+    <div class="chat-header">
+      <div class="ai-dot"></div>
+      <h2>AI Health Assistant</h2>
+      <div class="spacer"></div>
+      <button class="btn-secondary" style="font-size:11px;padding:4px 10px" onclick="clearChat()">Clear</button>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <div class="msg system">Ask questions about your health data — e.g. about sleep, activity, heart rate or lab results.</div>
+    </div>
+
+    <div class="chat-input-area">
+      <div class="quick-questions">
+        <button class="quick-btn" onclick="quickAsk('What is my average sleep in 2024?')">Sleep 2024</button>
+        <button class="quick-btn" onclick="quickAsk('Has my resting heart rate decreased over time?')">HR trend</button>
+        <button class="quick-btn" onclick="quickAsk('Which days am I most active?')">Activity</button>
+        <button class="quick-btn" onclick="quickAsk('What do my lab results show?')">Lab results</button>
+        <button class="quick-btn" onclick="quickAsk('What is my average wellness score this past month?')">Wellness</button>
+        <button class="quick-btn" onclick="quickAsk('When have I had high stress levels?')">Stress</button>
+      </div>
+      <div class="chat-input-row">
+        <textarea id="chatInput" placeholder="Type your question here…"
+                  onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+        <div class="chat-send-col">
+          <button id="sendBtn" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── State ──
+let chatHistory = [];
+let goldData = {};
+let charts = {};
+const API = '';
+
+// ── Chart defaults ──
+Chart.defaults.color = '#8892a4';
+Chart.defaults.borderColor = '#2a2d3e';
+
+const timeAxis = {
+  type: 'time',
+  time: { unit: 'month', tooltipFormat: 'dd. MMM yyyy' },
+  ticks: { maxTicksLimit: 8 }
+};
+
+function makeChart(id, label, color, yLabel) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return null;
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: label,
+          data: [],
+          borderColor: color + '55',
+          backgroundColor: color + '11',
+          borderWidth: 1.2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: true,
+        },
+        {
+          label: '7-dages gns.',
+          data: [],
+          borderColor: color,
+          borderWidth: 2.5,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: {
+          title: items => items[0]?.label || '',
+          label: item => `${item.dataset.label}: ${item.parsed.y !== null ? item.parsed.y.toFixed(1) : '–'}`
+        }}
+      },
+      scales: {
+        x: timeAxis,
+        y: { title: { display: !!yLabel, text: yLabel || '' }, beginAtZero: false }
+      }
+    }
+  });
+}
+
+function setChartData(chart, rawPairs, avgPairs) {
+  if (!chart) return;
+  chart.data.datasets[0].data = rawPairs;
+  chart.data.datasets[1].data = avgPairs;
+  chart.update('none');
+}
+
+function toXY(rows, xKey, yKey) {
+  return rows
+    .filter(r => r[xKey] && r[yKey] != null)
+    .map(r => ({ x: r[xKey], y: +r[yKey] }));
+}
+
+// ── Init ──
+charts.steps    = makeChart('stepsChart',   'Steps',           '#6c63ff', 'steps');
+charts.sleep    = makeChart('sleepChart',   'Sleep (min)',     '#00d4aa', 'min');
+charts.hr       = makeChart('hrChart',      'Heart Rate (bpm)','#ff6b6b', 'bpm');
+charts.stress   = makeChart('stressChart',  'Stress',          '#ffd43b', '0–100');
+charts.spo2     = makeChart('spo2Chart',    'SpO₂ (%)',        '#74c0fc', '%');
+charts.wellness = makeChart('wellnessChart','Wellness Score',  '#51cf66', '0–100');
+
+// ── Date filter helpers ──
+function getDateParams() {
+  const s = document.getElementById('startDate').value;
+  const e = document.getElementById('endDate').value;
+  let q = '?limit=1825';
+  if (s) q += `&start_date=${s}`;
+  if (e) q += `&end_date=${e}`;
+  return q;
+}
+
+function applyDateFilter() { loadAllData(); }
+
+// ── Data loading ──
+async function loadAllData() {
+  const q = getDateParams();
+  await Promise.allSettled([
+    loadActivity(q),
+    loadSleep(q),
+    loadHeartRate(q),
+    loadStress(q),
+    loadBloodOxygen(q),
+    loadWellness(q),
+    loadLabResults(),
+  ]);
+  updateStats();
+}
+
+async function fetchGold(name, query) {
+  try {
+    const r = await fetch(`${API}/gold/${name}${query || '?limit=1825'}`);
+    if (!r.ok) return [];
+    return await r.json();
+  } catch { return []; }
+}
+
+async function loadActivity(q) {
+  const data = await fetchGold('activity_gold', q);
+  goldData.activity = data;
+  setChartData(charts.steps,
+    toXY(data, 'date', 'steps'),
+    toXY(data, 'date', 'steps_7d_avg')
+  );
+}
+
+async function loadSleep(q) {
+  const data = await fetchGold('sleep_gold', q);
+  goldData.sleep = data;
+  setChartData(charts.sleep,
+    toXY(data, 'date', 'total_sleep_min'),
+    toXY(data, 'date', 'total_sleep_min_7d_avg')
+  );
+}
+
+async function loadHeartRate(q) {
+  const data = await fetchGold('heart_rate_gold', q);
+  goldData.hr = data;
+  setChartData(charts.hr,
+    toXY(data, 'date', 'resting_hr'),
+    toXY(data, 'date', 'resting_hr_7d_avg')
+  );
+}
+
+async function loadStress(q) {
+  const data = await fetchGold('stress_gold', q);
+  goldData.stress = data;
+  setChartData(charts.stress,
+    toXY(data, 'date', 'stress_mean'),
+    toXY(data, 'date', 'stress_7d_avg')
+  );
+}
+
+async function loadBloodOxygen(q) {
+  const data = await fetchGold('blood_oxygen_gold', q);
+  goldData.spo2 = data;
+  setChartData(charts.spo2,
+    toXY(data, 'date', 'spo2'),
+    toXY(data, 'date', 'spo2_7d_avg')
+  );
+}
+
+async function loadWellness(q) {
+  const data = await fetchGold('wellness_score', q);
+  goldData.wellness = data;
+  setChartData(charts.wellness,
+    toXY(data, 'date', 'wellness_score'),
+    toXY(data, 'date', 'wellness_7d_avg')
+  );
+}
+
+async function loadLabResults() {
+  try {
+    const data = await fetchGold('lab_results_gold');
+    if (!data.length) return;
+    const rows = data.map(r => {
+      const abn = r.abnormal;
+      const badge = abn === true || abn === 'true'
+        ? '<span class="badge high">Abnormal</span>'
+        : '<span class="badge ok">Normal</span>';
+      return `<tr>
+        <td>${r.test_name || '—'}</td>
+        <td>${r.value != null ? (+r.value).toFixed(2) : '—'}</td>
+        <td>${r.unit || '—'}</td>
+        <td>${r.reference_low != null ? (+r.reference_low).toFixed(1) : '—'} – ${r.reference_high != null ? (+r.reference_high).toFixed(1) : '—'}</td>
+        <td>${r.date ? r.date.split('T')[0] : '—'}</td>
+        <td>${badge}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('labTable').innerHTML = `
+      <table class="lab-table">
+        <thead><tr><th>Test</th><th>Value</th><th>Unit</th><th>Reference range</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  } catch {}
+}
+
+function updateStats() {
+  function avg7(arr, key) {
+    const vals = arr.slice(-7).map(r => r[key]).filter(v => v != null && !isNaN(v));
+    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  }
+  const steps = avg7(goldData.activity || [], 'steps');
+  const sleep = avg7(goldData.sleep || [], 'total_sleep_min');
+  const hr    = avg7(goldData.hr || [], 'resting_hr');
+  const well  = avg7(goldData.wellness || [], 'wellness_score');
+  document.getElementById('stat-steps').textContent = steps ? Math.round(steps).toLocaleString('da-DK') : '—';
+  document.getElementById('stat-sleep').textContent = sleep ? Math.round(sleep) : '—';
+  document.getElementById('stat-hr').textContent    = hr    ? Math.round(hr)    : '—';
+  document.getElementById('stat-wellness').textContent = well ? Math.round(well) : '—';
+}
+
+async function loadDataRange() {
+  try {
+    const r = await fetch(`${API}/summary`);
+    const d = await r.json();
+    const range = d.data_range;
+    if (range && range.start) {
+      document.getElementById('dataRange').textContent =
+        `${range.start} → ${range.end}  (${range.total_days} dage)`;
+      document.getElementById('startDate').value = range.start;
+      document.getElementById('endDate').value   = range.end;
+    }
+  } catch {}
+}
+
+// ── Search ──
+async function searchData() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+  const el = document.getElementById('searchResults');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Searching…</div>';
+  try {
+    const r = await fetch(`${API}/silver/search?q=${encodeURIComponent(q)}&limit=50`);
+    const data = await r.json();
+    if (!data.results.length) {
+      el.innerHTML = '<div class="empty">No results found.</div>';
+      return;
+    }
+    const cols = Object.keys(data.results[0]).filter(c => !c.startsWith('_') && c !== '_silver_table');
+    const thead = `<tr><th>Kilde</th>${cols.map(c => `<th>${c}</th>`).join('')}</tr>`;
+    const tbody = data.results.map(row =>
+      `<tr><td style="color:var(--accent2)">${row._silver_table || ''}</td>${cols.map(c => `<td>${row[c] != null ? row[c] : ''}</td>`).join('')}</tr>`
+    ).join('');
+    el.innerHTML = `<p style="color:var(--muted);font-size:11px;margin-bottom:6px">${data.count} results for "${q}"</p>
+      <table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  } catch (e) {
+    el.innerHTML = `<div class="empty">Search failed: ${e.message}</div>`;
+  }
+}
+
+// ── ETL ──
+async function triggerETL() {
+  const btn = document.getElementById('etlBtn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Kører ETL…';
+  try {
+    const r = await fetch(`${API}/etl/run`, { method: 'POST' });
+    const d = await r.json();
+    btn.textContent = '✓ ETL started';
+    setTimeout(() => {
+      btn.textContent = '⟳ Run ETL';
+      btn.disabled = false;
+      loadAllData();
+    }, 8000);
+  } catch {
+    btn.textContent = 'Error — try again';
+    btn.disabled = false;
+  }
+}
+
+// ── AI Chat ──
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  appendMsg('user', msg);
+  const sendBtn = document.getElementById('sendBtn');
+  sendBtn.disabled = true;
+
+  const loadingId = appendMsg('model', '<span class="spinner"></span>Thinking…', true);
+
+  try {
+    const includeContext = chatHistory.length === 0;
+    const r = await fetch(`${API}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, include_context: includeContext, conversation_history: chatHistory })
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${r.status}`);
+    }
+    const data = await r.json();
+    chatHistory = data.updated_history;
+    removeMsg(loadingId);
+    appendMsg('model', data.response);
+  } catch (e) {
+    removeMsg(loadingId);
+    appendMsg('model', `⚠️ Error: ${e.message}`);
+  } finally {
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
+function quickAsk(text) {
+  document.getElementById('chatInput').value = text;
+  sendMessage();
+}
+
+let msgId = 0;
+function appendMsg(role, text, isHtml = false) {
+  const id = `msg-${++msgId}`;
+  const el = document.createElement('div');
+  el.className = `msg ${role}`;
+  el.id = id;
+  if (isHtml) el.innerHTML = text;
+  else el.textContent = text;
+  const container = document.getElementById('chatMessages');
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+  return id;
+}
+
+function removeMsg(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function clearChat() {
+  chatHistory = [];
+  const msgs = document.getElementById('chatMessages');
+  msgs.innerHTML = '<div class="msg system">Chat cleared. Ask a new question.</div>';
+}
+
+// ── Bootstrap ──
+(async () => {
+  await loadDataRange();
+  await loadAllData();
+})();
+</script>
+</body>
+</html>

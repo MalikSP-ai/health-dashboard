@@ -1,0 +1,12 @@
+google-generativeai
+pandas
+plotly
+numpy
+python-dotenv
+openpyxl
+nbformat
+pyarrow
+fastapi
+uvicorn[standard]
+watchdog
+python-multipart

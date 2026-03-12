@@ -1,0 +1,27 @@
+# Environment
+.env
+
+# Virtual environment
+venv/
+
+# Raw health data (personal/private)
+DATA/
+
+# Generated data layers (can be rebuilt by running etl.py)
+bronze/
+silver/
+gold/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
+
+# Generated dashboard files
+dashboard_*.html
+uvicorn.log
+
+# OS
+.DS_Store
+Thumbs.db
