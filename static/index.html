@@ -120,7 +120,8 @@
   .badge.low { background: rgba(255,212,59,.15); color: var(--yellow); }
 
   /* Stat strip */
-  .stat-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat-strip { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+  .stat.blood-type .val { color: #ff6b6b; font-size: 18px; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
   .stat .val { font-size: 24px; font-weight: 700; color: var(--accent2); }
   .stat .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
@@ -280,6 +281,7 @@
       <div class="stat"><div class="val" id="stat-sleep">—</div><div class="lbl">Sleep min (7d avg.)</div></div>
       <div class="stat"><div class="val" id="stat-hr">—</div><div class="lbl">Resting HR (7d avg.)</div></div>
       <div class="stat"><div class="val" id="stat-wellness">—</div><div class="lbl">Wellness Score</div></div>
+      <div class="stat blood-type"><div class="val" id="stat-bloodtype">—</div><div class="lbl">Blood Type</div></div>
     </div>
 
     <!-- Charts 2×3 grid -->
@@ -350,6 +352,7 @@
         <button class="quick-btn" onclick="quickAsk('What do my lab results show?')">Lab results</button>
         <button class="quick-btn" onclick="quickAsk('What is my average wellness score this past month?')">Wellness</button>
         <button class="quick-btn" onclick="quickAsk('When have I had high stress levels?')">Stress</button>
+        <button class="quick-btn" onclick="quickAsk('What is my blood type and what does it mean?')">Blood type</button>
       </div>
       <div class="chat-input-row">
         <textarea id="chatInput" placeholder="Type your question here…"
@@ -470,8 +473,23 @@ async function loadAllData() {
     loadBloodOxygen(q),
     loadWellness(q),
     loadLabResults(),
+    loadProfile(),
   ]);
   updateStats();
+}
+
+async function loadProfile() {
+  try {
+    const r = await fetch(`${API}/profile`);
+    if (!r.ok) return;
+    const p = await r.json();
+    const el = document.getElementById('stat-bloodtype');
+    if (el && p.blood_type) el.textContent = p.blood_type;
+    const subtitle = document.getElementById('dataRange');
+    if (subtitle && p.name) {
+      subtitle.textContent = subtitle.textContent.replace('Indlæser data…', '') || subtitle.textContent;
+    }
+  } catch {}
 }
 
 async function fetchGold(name, query) {

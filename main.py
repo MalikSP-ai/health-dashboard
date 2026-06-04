@@ -49,6 +49,16 @@ BASE_DIR = Path(__file__).parent
 GOLD_DIR = BASE_DIR / "gold"
 SILVER_DIR = BASE_DIR / "silver"
 STATIC_DIR = BASE_DIR / "static"
+PROFILE_PATH = BASE_DIR / "profile.json"
+
+
+def _load_profile() -> Dict[str, Any]:
+    if PROFILE_PATH.exists():
+        try:
+            return json.loads(PROFILE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
 
 app = FastAPI(title="Health Dashboard API", version="1.0.0")
 app.add_middleware(
@@ -107,6 +117,11 @@ def serve_dashboard():
     if not index.exists():
         return {"message": "Dashboard not found. Place static/index.html in the project."}
     return FileResponse(str(index))
+
+
+@app.get("/profile")
+def get_profile():
+    return _load_profile()
 
 
 @app.get("/health")
@@ -186,8 +201,10 @@ def search_silver(q: str, domain: str = None, limit: int = 100):
 @app.get("/summary")
 def get_summary():
     """Compact health summary for AI context injection (~2000 tokens)."""
+    profile = _load_profile()
     summary: Dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "profile": profile,
         "data_range": {},
         "recent_30d": {},
         "recent_7d": {},
