@@ -16,7 +16,8 @@ A full-stack personal health analytics platform built on **Medallion Architectur
 - **Composite wellness score** derived from sleep, activity, heart rate and stress
 - **Lab results table** with normal/abnormal highlighting
 - **Full-text search** across the Silver layer
-- **Auto-trigger ETL** when new data files are added via the file watcher
+- **Auto-trigger ETL** when new data files are added via the file watcher, or when the Android app syncs Health Connect data
+- **Automated Samsung Health sync** via a companion Android app reading Health Connect (no manual CSV export needed for steps, heart rate, sleep, blood oxygen, calories)
 - Accessible from **any device** on your local network
 
 ---
@@ -124,6 +125,10 @@ Create a `.env` file in the project root:
 
 ```env
 GEMINI_API_KEY=your_api_key_here
+
+# Optional: required by the /ingest/health_connect endpoint if set.
+# Leave unset for LAN-only use; set it if the port is reachable beyond your LAN.
+HEALTH_CONNECT_SYNC_TOKEN=
 ```
 
 ### Add your data
@@ -184,6 +189,7 @@ python scheduler.py
 | GET | `/summary` | Compact health summary for AI context |
 | POST | `/chat` | Multi-turn AI chat with health context |
 | POST | `/etl/run` | Trigger ETL pipeline from the browser |
+| POST | `/ingest/health_connect` | Ingest a batch of records synced from the Android Health Connect app (see below) |
 
 ---
 
@@ -199,10 +205,73 @@ The AI assistant has access to a compact summary of your Gold layer data — inc
 
 ---
 
+## 📱 Samsung Health sync via Health Connect (automated, no manual export)
+
+Samsung has no public cloud API that a server can call to fetch your personal
+Samsung Health data. The only supported way to pull it programmatically is
+**Health Connect** — Android's on-device health data broker, which Samsung
+Health can write into. `android/HealthConnectSync/` is a small companion app
+that reads your data out of Health Connect and pushes it straight into the
+Bronze layer via a new endpoint, so you don't have to manually export/import
+CSVs every time.
+
+```
+android/HealthConnectSync/     Android Studio project (Kotlin)
+├── app/.../HealthConnectManager.kt   Reads Steps/HeartRate/Sleep/SpO2/ActiveCalories
+├── app/.../SyncUploader.kt           POSTs JSON to /ingest/health_connect
+└── app/.../MainActivity.kt           Permission grant + "Sync now" button
+```
+
+**How it fits the pipeline:** the app shapes each domain into the same
+column names the Samsung CSV bronze tables already use, and the backend
+writes them to `bronze/healthconnect_<domain>.parquet`. `etl.py`'s Silver
+transforms concatenate `samsung_*` and `healthconnect_*` bronze sources
+before continuing, so Gold tables and the dashboard need no changes —
+both sources just merge.
+
+### Setup
+
+1. **Enable the Samsung Health ↔ Health Connect sync** on your phone: Samsung
+   Health app → Settings → *Sync with Health Connect* → turn on the data
+   types you want synced (steps, heart rate, sleep, blood oxygen, active
+   calories). Samsung Health only writes into Health Connect for the types
+   you enable here.
+2. **Build the app**: open `android/HealthConnectSync/` in Android Studio,
+   let Gradle sync, connect your phone (or build a release APK and sideload
+   it), and run it. `minSdk` is 26; if the Health Connect app itself isn't
+   preinstalled (Android 13 and below), the app will offer to open it on the
+   Play Store.
+3. **Grant permissions**: tap *Grant Health Connect permissions* in the app,
+   allow the requested data types in the system dialog.
+4. **Point it at your dashboard**: enter your PC's local IP and port (e.g.
+   `http://192.168.1.100:8000`) in the *Server URL* field — same address
+   used to reach the dashboard from your phone. If you set
+   `HEALTH_CONNECT_SYNC_TOKEN` in `.env` (recommended if the port is
+   reachable beyond your own LAN), enter the same value in *Sync token*.
+5. **Tap "Sync now"**. The app reads everything since its last successful
+   sync (30 days on first run), POSTs it to `/ingest/health_connect`, and the
+   backend re-runs the ETL pipeline in the background automatically.
+
+### Limitations
+
+- **No stress data.** Health Connect has no "stress" record type, so
+  Samsung Health's stress metric cannot be synced this way — it still needs
+  the manual CSV export (`DATA/samsung/com.samsung.health.stress.csv`).
+- **No automatic background sync.** This is a foreground "sync now" app, not
+  a background service — Health Connect access from a background service
+  requires more Android plumbing (foreground service + battery-optimization
+  exemptions) that wasn't worth the complexity for a personal project. Open
+  the app and tap sync whenever you want fresh data.
+- Only synced from the moment you enable each data type in Samsung Health's
+  Health Connect settings — it won't backfill years of history the way a
+  full CSV export does.
+
+---
+
 ## 📊 Data Sources
 
 ### Samsung Health
-Exported directly from the Samsung Health app (Profile → Settings → Data privacy → Download personal data). Covers sleep, heart rate, steps, blood oxygen, stress and calories.
+Exported directly from the Samsung Health app (Profile → Settings → Data privacy → Download personal data), or synced automatically via the Health Connect companion app above. Covers sleep, heart rate, steps, blood oxygen, stress (CSV export only) and calories.
 
 ### Sundhedsplatformen (Denmark)
 Danish national health platform records including lab results, hospital visits, diagnoses and vaccinations. Accessed via personal data export — all within legal boundaries under GDPR Article 20 (right to data portability).
@@ -228,10 +297,12 @@ health-dashboard/
 ├── bronze/                         Raw parquet files (git-ignored)
 ├── silver/                         Clean domain tables (git-ignored)
 ├── gold/                           Analytics tables (git-ignored)
+├── android/
+│   └── HealthConnectSync/          Android app: syncs Samsung Health data via Health Connect
 ├── static/
 │   └── index.html                  Web dashboard
 ├── etl.py                          Medallion ETL pipeline
-├── main.py                         FastAPI backend + AI chat
+├── main.py                         FastAPI backend + AI chat + Health Connect ingestion
 ├── scheduler.py                    File watcher
 ├── generate_mock_data.py           Generate 5 years of mock Samsung data
 ├── requirements.txt                Python dependencies

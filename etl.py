@@ -121,6 +121,14 @@ class BronzeLayer:
 class SilverLayer:
     """Normalize bronze data into clean domain tables."""
 
+    @staticmethod
+    def _combined(b: dict, *keys: str) -> pd.DataFrame:
+        """Concat same-shaped bronze sources (e.g. samsung CSV export + Health Connect sync)."""
+        frames = [b[k] for k in keys if k in b and not b[k].empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
     def run(self, bronze_paths: Dict[str, Path]) -> Dict[str, Path]:
         SILVER_DIR.mkdir(parents=True, exist_ok=True)
         bronze: Dict[str, pd.DataFrame] = {}
@@ -157,7 +165,7 @@ class SilverLayer:
     # --- Samsung transforms ---
 
     def _transform_sleep(self, b: dict) -> pd.DataFrame:
-        df = b.get("samsung_sleep", pd.DataFrame()).copy()
+        df = self._combined(b, "samsung_sleep", "healthconnect_sleep")
         if df.empty:
             return df
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
@@ -181,7 +189,7 @@ class SilverLayer:
         return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
 
     def _transform_heart_rate(self, b: dict) -> pd.DataFrame:
-        df = b.get("samsung_heart_rate", pd.DataFrame()).copy()
+        df = self._combined(b, "samsung_heart_rate", "healthconnect_heart_rate")
         if df.empty:
             return df
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
@@ -195,7 +203,7 @@ class SilverLayer:
         return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
 
     def _transform_activity(self, b: dict) -> pd.DataFrame:
-        df = b.get("samsung_steps", pd.DataFrame()).copy()
+        df = self._combined(b, "samsung_steps", "healthconnect_steps")
         if df.empty:
             return df
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
@@ -214,7 +222,7 @@ class SilverLayer:
         return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
 
     def _transform_blood_oxygen(self, b: dict) -> pd.DataFrame:
-        df = b.get("samsung_blood_oxygen", pd.DataFrame()).copy()
+        df = self._combined(b, "samsung_blood_oxygen", "healthconnect_blood_oxygen")
         if df.empty:
             return df
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
@@ -241,7 +249,7 @@ class SilverLayer:
         return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
 
     def _transform_calories(self, b: dict) -> pd.DataFrame:
-        df = b.get("samsung_calories", pd.DataFrame()).copy()
+        df = self._combined(b, "samsung_calories", "healthconnect_calories")
         if df.empty:
             return df
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
@@ -612,6 +620,9 @@ class ETLPipeline:
     def run_full(self) -> dict:
         log.info("=== ETL Pipeline starting ===")
         bronze_paths = BronzeLayer().run()
+        # Pick up bronze sources written directly by other ingestion paths
+        # (e.g. the Health Connect sync endpoint), not just this run's CSV exports.
+        bronze_paths.update({p.stem: p for p in BRONZE_DIR.glob("healthconnect_*.parquet")})
         silver_paths = SilverLayer().run(bronze_paths)
         gold_paths = GoldLayer().run(silver_paths)
         log.info(

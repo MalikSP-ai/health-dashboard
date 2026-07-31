@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 import requests as _requests
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,9 +46,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
+BRONZE_DIR = BASE_DIR / "bronze"
 GOLD_DIR = BASE_DIR / "gold"
 SILVER_DIR = BASE_DIR / "silver"
 STATIC_DIR = BASE_DIR / "static"
+
+_HEALTH_CONNECT_SYNC_TOKEN = os.environ.get("HEALTH_CONNECT_SYNC_TOKEN", "")
 
 app = FastAPI(title="Health Dashboard API", version="1.0.0")
 app.add_middleware(
@@ -349,6 +352,92 @@ def _run_etl_background():
 async def trigger_etl(background_tasks: BackgroundTasks):
     background_tasks.add_task(_run_etl_background)
     return {"status": "triggered", "message": "ETL pipeline is running in the background."}
+
+
+# ---------------------------------------------------------------------------
+# Health Connect ingestion (Android companion app)
+# ---------------------------------------------------------------------------
+# The Android app reads Samsung Health data via the Health Connect API (the
+# only supported way to pull Samsung Health data programmatically — Samsung
+# has no public cloud API for personal accounts) and POSTs it here. Each
+# domain list uses the same column names as the Samsung CSV bronze tables so
+# the existing Silver transforms can merge both sources unchanged.
+
+HEALTH_CONNECT_DEDUPE_KEYS = {
+    "steps": ["start_time"],
+    "heart_rate": ["start_time"],
+    "sleep": ["start_time", "end_time"],
+    "blood_oxygen": ["start_time"],
+    "calories": ["start_time"],
+}
+
+
+class HealthConnectPayload(BaseModel):
+    steps: List[dict] = []
+    heart_rate: List[dict] = []
+    sleep: List[dict] = []
+    blood_oxygen: List[dict] = []
+    calories: List[dict] = []
+
+
+def _check_sync_token(x_sync_token: str) -> None:
+    if _HEALTH_CONNECT_SYNC_TOKEN and x_sync_token != _HEALTH_CONNECT_SYNC_TOKEN:
+        raise HTTPException(401, "Invalid or missing X-Sync-Token header")
+
+
+@app.post("/ingest/health_connect")
+async def ingest_health_connect(
+    payload: HealthConnectPayload,
+    background_tasks: BackgroundTasks,
+    auto_etl: bool = True,
+    x_sync_token: str = Header(default=""),
+):
+    """Receive a batch of Health Connect records from the Android sync app."""
+    _check_sync_token(x_sync_token)
+
+    BRONZE_DIR.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ingested: Dict[str, int] = {}
+
+    for domain, dedupe_cols in HEALTH_CONNECT_DEDUPE_KEYS.items():
+        records = getattr(payload, domain)
+        if not records:
+            continue
+        try:
+            new_df = pd.DataFrame(records)
+        except Exception as e:
+            raise HTTPException(400, f"Invalid records for '{domain}': {e}")
+        new_df["_ingestion_timestamp"] = now
+        new_df["_source_filename"] = "health_connect_sync"
+
+        out_path = BRONZE_DIR / f"healthconnect_{domain}.parquet"
+        if out_path.exists():
+            try:
+                existing = pd.read_parquet(out_path)
+                new_df = pd.concat([existing, new_df], ignore_index=True)
+            except Exception as e:
+                log.warning(f"Could not read existing {out_path.name}, overwriting: {e}")
+
+        dedupe_subset = [c for c in dedupe_cols if c in new_df.columns]
+        if dedupe_subset:
+            new_df = new_df.drop_duplicates(subset=dedupe_subset, keep="last")
+
+        _write_parquet_safe(new_df, out_path)
+        ingested[domain] = len(records)
+
+    if not ingested:
+        raise HTTPException(400, "No records provided")
+
+    if auto_etl:
+        background_tasks.add_task(_run_etl_background)
+
+    return {"status": "ok", "ingested": ingested, "etl_triggered": auto_etl}
+
+
+def _write_parquet_safe(df: pd.DataFrame, path: Path) -> None:
+    for col in df.select_dtypes(include=["datetimetz"]).columns:
+        df[col] = df[col].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    df.to_parquet(path, index=False, engine="pyarrow")
 
 
 if __name__ == "__main__":
