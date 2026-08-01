@@ -17,6 +17,7 @@ A full-stack personal health analytics platform built on **Medallion Architectur
 - **Lab results table** with normal/abnormal highlighting
 - **Full-text search** across the Silver layer
 - **Auto-trigger ETL** when new data files are added via the file watcher
+- **Automatic running data** synced from Samsung Health via Strava — no manual CSV export needed for new runs
 - Accessible from **any device** on your local network
 
 ---
@@ -54,6 +55,7 @@ Produces 10 clean domain tables:
 | `blood_oxygen` | Samsung Health SpO₂ |
 | `stress` | Samsung Health stress (30-min windows) |
 | `calories` | Samsung Health calories burned |
+| `running` | Strava API (auto-synced from Samsung Health) |
 | `lab_results` | Sundhed lab results + prøvesvar |
 | `hospital_visits` | Sundhed hospital visits |
 | `diagnoses` | Sundhed diagnoses + ICD codes |
@@ -69,6 +71,7 @@ Produces 11 analytics-ready tables:
 | `heart_rate_gold` | Daily mean/min/max, resting HR (03:00–06:00 UTC), rolling avg |
 | `blood_oxygen_gold` | Daily SpO₂, low-oxygen flags |
 | `stress_gold` | Daily mean/max stress, rolling avg, high-stress flags |
+| `running_gold` | Daily/weekly distance, 7 & 30-day totals, personal records (longest run, fastest pace) |
 | `wellness_score` | Composite 0–100 score from sleep + steps + HR + stress |
 | `lab_results_gold` | Latest value per test with abnormal flags |
 | `cross_domain_sleep_activity` | Sleep quality day N vs steps day N+1 |
@@ -124,6 +127,11 @@ Create a `.env` file in the project root:
 
 ```env
 GEMINI_API_KEY=your_api_key_here
+
+# Optional — for automatic running data sync (see "Automatic running data via Strava" below)
+STRAVA_CLIENT_ID=
+STRAVA_CLIENT_SECRET=
+STRAVA_REFRESH_TOKEN=
 ```
 
 ### Add your data
@@ -139,6 +147,42 @@ com.samsung.health.blood_oxygen.csv
 com.samsung.health.stress.csv
 com.samsung.health.calories_burned.csv
 ```
+
+### Automatic running data via Strava (no manual export)
+
+Samsung has no public API for pulling your own data automatically — the only
+official routes are manual export, or an on-device Android app reading via
+Health Connect. Samsung Health does, however, have a **built-in auto-sync to
+Strava** for new GPS-tracked runs, and Strava has a free, well-documented
+public API. This project uses that chain to keep running data fresh without
+any manual CSV export, going forward:
+
+**Watch → Samsung Health → Strava (auto) → this dashboard (auto, via API)**
+
+Note: only *new* runs sync automatically this way — historical runs stay on
+the manual CSV import path described above.
+
+1. In the Samsung Health app: **Settings → Connected services → Strava** and
+   connect your account.
+2. Create a Strava API app at https://www.strava.com/settings/api (set
+   "Authorization Callback Domain" to `localhost`) and add the Client ID/Secret
+   to `.env`:
+   ```env
+   STRAVA_CLIENT_ID=your_client_id
+   STRAVA_CLIENT_SECRET=your_client_secret
+   ```
+3. Run the one-time OAuth helper to get a refresh token:
+   ```bash
+   python strava_auth.py
+   ```
+   This opens your browser, asks you to authorize the app, and prints a
+   `STRAVA_REFRESH_TOKEN` value — add it to `.env` too.
+4. Pull new runs at any time with:
+   ```bash
+   python strava_sync.py
+   ```
+   `scheduler.py` (see below) runs this automatically every 30 minutes when
+   started, so once set up you never need to touch it again.
 
 ### Run the ETL pipeline
 
@@ -165,7 +209,8 @@ Then open `http://YOUR_LOCAL_IP:8080` on your phone (same WiFi network).
 
 ### Run the file watcher (optional)
 
-Automatically re-runs ETL when new files are added to `DATA/`:
+Automatically re-runs ETL when new files are added to `DATA/`, and — if Strava
+credentials are configured — polls Strava for new runs every 30 minutes:
 
 ```bash
 python scheduler.py
@@ -204,6 +249,9 @@ The AI assistant has access to a compact summary of your Gold layer data — inc
 ### Samsung Health
 Exported directly from the Samsung Health app (Profile → Settings → Data privacy → Download personal data). Covers sleep, heart rate, steps, blood oxygen, stress and calories.
 
+### Running (Strava, auto-synced)
+New GPS-tracked runs sync automatically from Samsung Health to Strava (native "Connected services" integration), and `strava_sync.py` pulls them from the Strava API into the pipeline — no manual export needed for new runs. See "Automatic running data via Strava" above for setup.
+
 ### Sundhedsplatformen (Denmark)
 Danish national health platform records including lab results, hospital visits, diagnoses and vaccinations. Accessed via personal data export — all within legal boundaries under GDPR Article 20 (right to data portability).
 
@@ -232,7 +280,9 @@ health-dashboard/
 │   └── index.html                  Web dashboard
 ├── etl.py                          Medallion ETL pipeline
 ├── main.py                         FastAPI backend + AI chat
-├── scheduler.py                    File watcher
+├── scheduler.py                    File watcher + Strava polling
+├── strava_auth.py                  One-time Strava OAuth setup
+├── strava_sync.py                  Pulls new runs from the Strava API
 ├── generate_mock_data.py           Generate 5 years of mock Samsung data
 ├── requirements.txt                Python dependencies
 └── .env                            API keys (git-ignored)

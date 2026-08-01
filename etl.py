@@ -138,6 +138,7 @@ class SilverLayer:
             ("blood_oxygen",    self._transform_blood_oxygen),
             ("stress",          self._transform_stress),
             ("calories",        self._transform_calories),
+            ("running",         self._transform_running),
             ("lab_results",     self._transform_lab_results),
             ("hospital_visits", self._transform_hospital_visits),
             ("diagnoses",       self._transform_diagnoses),
@@ -250,6 +251,27 @@ class SilverLayer:
         df["active_time"] = pd.to_numeric(df["active_time"], errors="coerce")
         df = df.drop_duplicates(subset=["date"], keep="last")
         cols = ["date", "calorie", "active_time"]
+        return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
+
+    def _transform_running(self, b: dict) -> pd.DataFrame:
+        """Normalize Strava activities (fetched by strava_sync.py) into daily runs."""
+        df = b.get("strava_activities", pd.DataFrame()).copy()
+        if df.empty:
+            return df
+        df["start_time_local"] = pd.to_datetime(df["start_date_local"], errors="coerce")
+        df["date"] = df["start_time_local"].dt.date.astype(str)
+        df["distance_km"] = pd.to_numeric(df["distance"], errors="coerce") / 1000
+        df["duration_min"] = pd.to_numeric(df["moving_time"], errors="coerce") / 60
+        df["avg_pace_min_per_km"] = np.where(
+            df["distance_km"] > 0, df["duration_min"] / df["distance_km"], np.nan
+        )
+        df["avg_hr"] = pd.to_numeric(df.get("average_heartrate"), errors="coerce")
+        df["max_hr"] = pd.to_numeric(df.get("max_heartrate"), errors="coerce")
+        df["elevation_gain_m"] = pd.to_numeric(df.get("total_elevation_gain"), errors="coerce")
+        df = df.rename(columns={"id": "activity_id", "name": "activity_name"})
+        df = df.drop_duplicates(subset=["activity_id"], keep="last")
+        cols = ["date", "activity_id", "activity_name", "distance_km", "duration_min",
+                "avg_pace_min_per_km", "avg_hr", "max_hr", "elevation_gain_m", "start_time_local"]
         return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
 
     # --- Sundhed transforms ---
@@ -394,6 +416,7 @@ class GoldLayer:
             ("heart_rate_gold",           self._build_heart_rate_gold),
             ("blood_oxygen_gold",         self._build_blood_oxygen_gold),
             ("stress_gold",               self._build_stress_gold),
+            ("running_gold",              self._build_running_gold),
             ("wellness_score",            self._build_wellness_score),
             ("lab_results_gold",          self._build_lab_results_gold),
             ("cross_domain_sleep_activity", self._build_cross_domain_sleep_activity),
@@ -499,6 +522,32 @@ class GoldLayer:
         daily["high_stress_day"] = daily["stress_mean"] > 70
         return daily.reset_index()
 
+    def _build_running_gold(self, s: dict, g: dict) -> pd.DataFrame:
+        df = s.get("running", pd.DataFrame()).copy()
+        if df.empty:
+            return df
+        # Multiple runs on the same day: aggregate to one row per date.
+        daily = df.groupby("date").agg(
+            distance_km=("distance_km", "sum"),
+            duration_min=("duration_min", "sum"),
+            avg_pace_min_per_km=("avg_pace_min_per_km", "mean"),
+            avg_hr=("avg_hr", "mean"),
+            max_hr=("max_hr", "max"),
+            elevation_gain_m=("elevation_gain_m", "sum"),
+            runs=("activity_id", "count"),
+        ).round(2)
+        daily.index = pd.to_datetime(daily.index)
+        daily = daily.sort_index()
+        # Runs are sparse (gaps between sessions), so use calendar-day offset
+        # windows ('7D'/'30D') rather than row-count windows — a row-count
+        # window would silently span more than 7/30 actual days.
+        daily["distance_7d_avg"] = daily["distance_km"].rolling("7D", min_periods=1).mean().round(2)
+        daily["distance_7d_total"] = daily["distance_km"].rolling("7D", min_periods=1).sum().round(2)
+        daily["distance_30d_total"] = daily["distance_km"].rolling("30D", min_periods=1).sum().round(2)
+        daily["longest_run_km"] = daily["distance_km"].expanding().max().round(2)
+        daily["fastest_pace_min_per_km"] = daily["avg_pace_min_per_km"].expanding().min().round(2)
+        return daily.reset_index()
+
     def _build_wellness_score(self, s: dict, g: dict) -> pd.DataFrame:
         parts = {}
 
@@ -572,6 +621,7 @@ class GoldLayer:
             "heart_rate_gold":  ["hr_mean", "resting_hr"],
             "blood_oxygen_gold":["spo2", "min_spo2"],
             "stress_gold":      ["stress_mean"],
+            "running_gold":     ["distance_km", "avg_pace_min_per_km"],
             "wellness_score":   ["wellness_score"],
         }
         base = None
@@ -612,6 +662,11 @@ class ETLPipeline:
     def run_full(self) -> dict:
         log.info("=== ETL Pipeline starting ===")
         bronze_paths = BronzeLayer().run()
+        # strava_activities.parquet is written directly by strava_sync.py (API-based,
+        # not a local CSV source), so it isn't part of BronzeLayer.SOURCE_MAP.
+        strava_bronze = BRONZE_DIR / "strava_activities.parquet"
+        if strava_bronze.exists():
+            bronze_paths["strava_activities"] = strava_bronze
         silver_paths = SilverLayer().run(bronze_paths)
         gold_paths = GoldLayer().run(silver_paths)
         log.info(

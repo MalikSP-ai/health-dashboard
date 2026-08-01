@@ -1,10 +1,13 @@
 """
 File watcher — re-runs ETL pipeline when new files are added to DATA/
+Also polls Strava for new runs on a timer, so running data stays fresh
+without any manual export at all.
 """
 
 import logging
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -14,10 +17,41 @@ from watchdog.observers import Observer
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).parent / "DATA"
-ETL_SCRIPT = Path(__file__).parent / "etl.py"
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR / "DATA"
+ETL_SCRIPT = BASE_DIR / "etl.py"
+STRAVA_SYNC_SCRIPT = BASE_DIR / "strava_sync.py"
 COOLDOWN_SECONDS = 30
 WATCHED_EXTENSIONS = {".csv", ".json", ".txt", ".xlsx"}
+STRAVA_SYNC_INTERVAL_SECONDS = 30 * 60
+
+
+def run_subprocess(script: Path, label: str, timeout: int = 300) -> bool:
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        if result.returncode == 0:
+            log.info(f"{label} completed successfully")
+            if result.stdout:
+                log.info(result.stdout[-500:])  # last 500 chars
+            return True
+        else:
+            log.error(f"{label} failed (exit {result.returncode}):\n{result.stderr[-1000:]}")
+            return False
+    except subprocess.TimeoutExpired:
+        log.error(f"{label} timed out after {timeout}s")
+        return False
+    except Exception as e:
+        log.error(f"{label} error: {e}")
+        return False
+
+
+def run_etl() -> bool:
+    return run_subprocess(ETL_SCRIPT, "ETL")
 
 
 class ETLTriggerHandler(FileSystemEventHandler):
@@ -41,26 +75,19 @@ class ETLTriggerHandler(FileSystemEventHandler):
             return
         self._last_triggered = now
         log.info(f"File change detected: {path} — triggering ETL...")
-        self._run_etl()
+        run_etl()
 
-    def _run_etl(self) -> None:
-        try:
-            result = subprocess.run(
-                [sys.executable, str(ETL_SCRIPT)],
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-            if result.returncode == 0:
-                log.info("ETL completed successfully")
-                if result.stdout:
-                    log.info(result.stdout[-500:])  # last 500 chars
-            else:
-                log.error(f"ETL failed (exit {result.returncode}):\n{result.stderr[-1000:]}")
-        except subprocess.TimeoutExpired:
-            log.error("ETL timed out after 5 minutes")
-        except Exception as e:
-            log.error(f"ETL trigger error: {e}")
+
+def _strava_sync_loop(stop_event: threading.Event) -> None:
+    """Polls Strava for new runs every STRAVA_SYNC_INTERVAL_SECONDS and re-runs ETL
+    when new activities were found — fully automatic, no manual export needed."""
+    if not STRAVA_SYNC_SCRIPT.exists():
+        return
+    while not stop_event.is_set():
+        log.info("Running scheduled Strava sync...")
+        if run_subprocess(STRAVA_SYNC_SCRIPT, "Strava sync", timeout=60):
+            run_etl()
+        stop_event.wait(STRAVA_SYNC_INTERVAL_SECONDS)
 
 
 def main() -> None:
@@ -73,6 +100,13 @@ def main() -> None:
     observer.schedule(handler, str(DATA_DIR), recursive=True)
     observer.start()
     log.info(f"Watching {DATA_DIR} for changes (extensions: {WATCHED_EXTENSIONS})...")
+
+    stop_event = threading.Event()
+    strava_thread = threading.Thread(
+        target=_strava_sync_loop, args=(stop_event,), daemon=True
+    )
+    strava_thread.start()
+    log.info(f"Polling Strava for new runs every {STRAVA_SYNC_INTERVAL_SECONDS // 60} min...")
     log.info("Press Ctrl+C to stop.")
 
     try:
@@ -81,6 +115,7 @@ def main() -> None:
     except KeyboardInterrupt:
         log.info("Stopping scheduler...")
     finally:
+        stop_event.set()
         observer.stop()
         observer.join()
         log.info("Scheduler stopped.")

@@ -310,6 +310,18 @@
       </div>
     </div>
 
+    <!-- Running -->
+    <div class="card">
+      <h3>Løb</h3>
+      <div class="stat-strip" id="runStatStrip" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 10px;">
+        <div class="stat"><div class="val" id="stat-run-7d">—</div><div class="lbl">km (sidste 7 dage)</div></div>
+        <div class="stat"><div class="val" id="stat-run-longest">—</div><div class="lbl">Længste løbetur (km)</div></div>
+        <div class="stat"><div class="val" id="stat-run-pace">—</div><div class="lbl">Hurtigste tempo (min/km)</div></div>
+      </div>
+      <div class="chart-wrap"><canvas id="runningChart"></canvas></div>
+      <div id="runningList" style="margin-top: 12px;"><div class="empty">Ingen løbedata endnu</div></div>
+    </div>
+
     <!-- Lab results -->
     <div class="card">
       <h3>Lab Results</h3>
@@ -439,6 +451,51 @@ function toXY(rows, xKey, yKey) {
     .map(r => ({ x: r[xKey], y: +r[yKey] }));
 }
 
+function makeRunningChart(id) {
+  const ctx = document.getElementById(id);
+  if (!ctx) return null;
+  return new Chart(ctx, {
+    data: {
+      datasets: [
+        {
+          type: 'bar',
+          label: 'Distance (km)',
+          data: [],
+          backgroundColor: '#00d4aa88',
+          borderRadius: 3,
+          yAxisID: 'y',
+        },
+        {
+          type: 'line',
+          label: '7-dages total (km)',
+          data: [],
+          borderColor: '#6c63ff',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0.3,
+          fill: false,
+          yAxisID: 'y',
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: {
+          title: items => items[0]?.label || '',
+          label: item => `${item.dataset.label}: ${item.parsed.y !== null ? item.parsed.y.toFixed(2) : '–'} km`
+        }}
+      },
+      scales: {
+        x: timeAxis,
+        y: { title: { display: true, text: 'km' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
 // ── Init ──
 charts.steps    = makeChart('stepsChart',   'Steps',           '#6c63ff', 'steps');
 charts.sleep    = makeChart('sleepChart',   'Sleep (min)',     '#00d4aa', 'min');
@@ -446,6 +503,7 @@ charts.hr       = makeChart('hrChart',      'Heart Rate (bpm)','#ff6b6b', 'bpm')
 charts.stress   = makeChart('stressChart',  'Stress',          '#ffd43b', '0–100');
 charts.spo2     = makeChart('spo2Chart',    'SpO₂ (%)',        '#74c0fc', '%');
 charts.wellness = makeChart('wellnessChart','Wellness Score',  '#51cf66', '0–100');
+charts.running  = makeRunningChart('runningChart');
 
 // ── Date filter helpers ──
 function getDateParams() {
@@ -469,6 +527,7 @@ async function loadAllData() {
     loadStress(q),
     loadBloodOxygen(q),
     loadWellness(q),
+    loadRunning(q),
     loadLabResults(),
   ]);
   updateStats();
@@ -534,6 +593,47 @@ async function loadWellness(q) {
     toXY(data, 'date', 'wellness_score'),
     toXY(data, 'date', 'wellness_7d_avg')
   );
+}
+
+function formatPace(minPerKm) {
+  if (minPerKm == null || isNaN(minPerKm) || !isFinite(minPerKm)) return '—';
+  const min = Math.floor(minPerKm);
+  const sec = Math.round((minPerKm - min) * 60);
+  return `${min}:${String(sec).padStart(2, '0')}`;
+}
+
+async function loadRunning(q) {
+  const data = await fetchGold('running_gold', q);
+  goldData.running = data;
+  setChartData(charts.running,
+    toXY(data, 'date', 'distance_km'),
+    toXY(data, 'date', 'distance_7d_total')
+  );
+
+  const last = data[data.length - 1];
+  document.getElementById('stat-run-7d').textContent = last?.distance_7d_total != null
+    ? (+last.distance_7d_total).toFixed(1) : '—';
+  document.getElementById('stat-run-longest').textContent = last?.longest_run_km != null
+    ? (+last.longest_run_km).toFixed(1) : '—';
+  document.getElementById('stat-run-pace').textContent = formatPace(last?.fastest_pace_min_per_km);
+
+  const listEl = document.getElementById('runningList');
+  if (!data.length) {
+    listEl.innerHTML = '<div class="empty">Ingen løbedata endnu — se README for Strava-opsætning</div>';
+    return;
+  }
+  const recent = data.slice(-8).reverse();
+  const rows = recent.map(r => `<tr>
+    <td>${r.date ? r.date.split('T')[0] : '—'}</td>
+    <td>${r.distance_km != null ? (+r.distance_km).toFixed(2) + ' km' : '—'}</td>
+    <td>${r.duration_min != null ? Math.round(r.duration_min) + ' min' : '—'}</td>
+    <td>${formatPace(r.avg_pace_min_per_km)} /km</td>
+  </tr>`).join('');
+  listEl.innerHTML = `
+    <table class="lab-table">
+      <thead><tr><th>Dato</th><th>Distance</th><th>Varighed</th><th>Tempo</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
 }
 
 async function loadLabResults() {
