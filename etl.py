@@ -3,6 +3,8 @@ Medallion Architecture ETL Pipeline
 Bronze (raw parquet) → Silver (normalized domains) → Gold (aggregated analytics)
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from datetime import datetime, timezone
