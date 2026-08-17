@@ -130,15 +130,30 @@ GEMINI_API_KEY=your_api_key_here
 
 Place your Samsung Health CSV exports in `DATA/samsung/` and any Sundhedsplatformen exports in `DATA/sundhed/`.
 
-Expected Samsung Health files:
-```
-com.samsung.health.sleep.csv
-com.samsung.health.heart_rate.csv
-com.samsung.health.step_daily_trend.csv
-com.samsung.health.blood_oxygen.csv
-com.samsung.health.stress.csv
-com.samsung.health.calories_burned.csv
-```
+Two layouts are supported:
+
+- **Mock/clean layout** — flat files directly in `DATA/samsung/`:
+  ```
+  com.samsung.health.sleep.csv
+  com.samsung.health.heart_rate.csv
+  com.samsung.health.step_daily_trend.csv
+  com.samsung.health.blood_oxygen.csv
+  com.samsung.health.stress.csv
+  com.samsung.health.calories_burned.csv
+  ```
+- **Real Samsung Health export** — just unzip the export as-is into `DATA/samsung/`
+  (e.g. `DATA/samsung/samsunghealth_<account>_<timestamp>/`). The ETL locates the
+  relevant files by pattern regardless of the account/timestamp suffix:
+  ```
+  com.samsung.shealth.sleep.<ts>.csv
+  com.samsung.shealth.tracker.heart_rate.<ts>.csv
+  com.samsung.shealth.step_daily_trend.<ts>.csv
+  com.samsung.shealth.tracker.oxygen_saturation.<ts>.csv
+  com.samsung.shealth.stress.<ts>.csv
+  com.samsung.shealth.calories_burned.details.<ts>.csv
+  ```
+  The real export's extra comment line and namespaced column names
+  (`com.samsung.health.sleep.start_time`, etc.) are handled automatically.
 
 ### Run the ETL pipeline
 

@@ -50,9 +50,12 @@ def _safe_parquet(df: pd.DataFrame, path: Path, label: str) -> None:
 
 
 def _parse_samsung_ts(series: pd.Series) -> pd.Series:
-    """Parse Samsung ISO timestamps (2020-01-01T22:41:00.000+0100) → UTC string."""
-    parsed = pd.to_datetime(series, utc=True, errors="coerce")
-    return parsed
+    """Parse Samsung timestamps: either ISO strings (2020-01-01T22:41:00.000+0100)
+    or epoch-millisecond ints (used by e.g. day_time fields)."""
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.notna().mean() > 0.9:
+        return pd.to_datetime(numeric, unit="ms", utc=True, errors="coerce")
+    return pd.to_datetime(series, utc=True, errors="coerce")
 
 
 # ---------------------------------------------------------------------------
@@ -62,19 +65,23 @@ def _parse_samsung_ts(series: pd.Series) -> pd.Series:
 class BronzeLayer:
     """Ingest raw source files as-is into parquet, adding metadata columns."""
 
+    # (mock/flat path, read kwargs, glob pattern for a real Samsung export dump)
+    # Real exports nest every file under DATA/samsung/<export folder>/ with a
+    # "shealth" prefix and a trailing account/timestamp suffix instead of the
+    # clean mock filename, e.g. com.samsung.shealth.sleep.20260817113083.csv
     SOURCE_MAP = {
-        "samsung_sleep":        ("samsung/com.samsung.health.sleep.csv",            {}),
-        "samsung_heart_rate":   ("samsung/com.samsung.health.heart_rate.csv",       {}),
-        "samsung_steps":        ("samsung/com.samsung.health.step_daily_trend.csv", {}),
-        "samsung_blood_oxygen": ("samsung/com.samsung.health.blood_oxygen.csv",     {}),
-        "samsung_stress":       ("samsung/com.samsung.health.stress.csv",           {}),
-        "samsung_calories":     ("samsung/com.samsung.health.calories_burned.csv",  {}),
-        "sundhed_lab_results":  ("sundhed/lab_results.csv",                         {}),
-        "sundhed_vaccinations": ("sundhed/vaccinations.csv",                        {}),
-        "sundhed_diagnoses_txt":("sundhed/diagnoses.txt",                           {"raw": True}),
-        "sundhed_besoeg":       ("sundhed/besoeg_real.csv",                         {"encoding": "utf-8-sig"}),
-        "sundhed_diagnoser":    ("sundhed/diagnoser_real.csv",                      {"encoding": "utf-8-sig"}),
-        "sundhed_proevesvar":   ("sundhed/proevesvar_real.csv",                     {}),
+        "samsung_sleep":        ("samsung/com.samsung.health.sleep.csv",            {}, "com.samsung.shealth.sleep.*.csv"),
+        "samsung_heart_rate":   ("samsung/com.samsung.health.heart_rate.csv",       {}, "com.samsung.shealth.tracker.heart_rate.*.csv"),
+        "samsung_steps":        ("samsung/com.samsung.health.step_daily_trend.csv", {}, "com.samsung.shealth.step_daily_trend.*.csv"),
+        "samsung_blood_oxygen": ("samsung/com.samsung.health.blood_oxygen.csv",     {}, "com.samsung.shealth.tracker.oxygen_saturation.*.csv"),
+        "samsung_stress":       ("samsung/com.samsung.health.stress.csv",           {}, "com.samsung.shealth.stress.*.csv"),
+        "samsung_calories":     ("samsung/com.samsung.health.calories_burned.csv",  {}, "com.samsung.shealth.calories_burned.details.*.csv"),
+        "sundhed_lab_results":  ("sundhed/lab_results.csv",                         {}, None),
+        "sundhed_vaccinations": ("sundhed/vaccinations.csv",                        {}, None),
+        "sundhed_diagnoses_txt":("sundhed/diagnoses.txt",                           {"raw": True}, None),
+        "sundhed_besoeg":       ("sundhed/besoeg_real.csv",                         {"encoding": "utf-8-sig"}, None),
+        "sundhed_diagnoser":    ("sundhed/diagnoser_real.csv",                      {"encoding": "utf-8-sig"}, None),
+        "sundhed_proevesvar":   ("sundhed/proevesvar_real.csv",                     {}, None),
     }
 
     def _meta(self, df: pd.DataFrame, filename: str) -> pd.DataFrame:
@@ -84,7 +91,12 @@ class BronzeLayer:
         return df
 
     def _ingest_csv(self, path: Path, encoding: str = "utf-8") -> pd.DataFrame:
-        df = pd.read_csv(path, encoding=encoding, low_memory=False)
+        # Real Samsung Health exports prepend a one-line comment
+        # ("com.samsung.shealth.sleep,7006003,11") before the real header row.
+        with open(path, "r", encoding=encoding, errors="replace") as f:
+            first_line = f.readline()
+        skiprows = 1 if first_line.startswith("com.samsung.") and first_line.count(",") <= 5 else 0
+        df = pd.read_csv(path, encoding=encoding, low_memory=False, skiprows=skiprows)
         return self._meta(df, path.name)
 
     def _ingest_txt(self, path: Path) -> pd.DataFrame:
@@ -92,11 +104,24 @@ class BronzeLayer:
         df = pd.DataFrame({"raw_line": [l for l in lines if l.strip()]})
         return self._meta(df, path.name)
 
+    def _resolve_source(self, rel_path: str, real_glob: str | None) -> Path:
+        """Prefer the flat mock-data path; fall back to a real export dump
+        found anywhere under DATA/samsung/ (newest file wins if several)."""
+        src = DATA_DIR / rel_path
+        if src.exists() or not real_glob:
+            return src
+        matches = sorted(
+            (DATA_DIR / "samsung").rglob(real_glob),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        return matches[0] if matches else src
+
     def run(self) -> Dict[str, Path]:
         BRONZE_DIR.mkdir(parents=True, exist_ok=True)
         results: Dict[str, Path] = {}
-        for table_name, (rel_path, kwargs) in self.SOURCE_MAP.items():
-            src = DATA_DIR / rel_path
+        for table_name, (rel_path, kwargs, real_glob) in self.SOURCE_MAP.items():
+            src = self._resolve_source(rel_path, real_glob)
             if not src.exists():
                 log.warning(f"Source not found, skipping: {src}")
                 continue
@@ -160,6 +185,15 @@ class SilverLayer:
         df = b.get("samsung_sleep", pd.DataFrame()).copy()
         if df.empty:
             return df
+        # Real exports prefix start/end time with the source table name, and
+        # report rem/light duration as "total_*_duration" with no separate
+        # deep-sleep column (derived below as the remainder).
+        df = df.rename(columns={
+            "com.samsung.health.sleep.start_time": "start_time",
+            "com.samsung.health.sleep.end_time": "end_time",
+            "total_rem_duration": "rem_duration",
+            "total_light_duration": "light_duration",
+        })
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
         df["end_time_utc"] = _parse_samsung_ts(df["end_time"])
         # Use local date of sleep end (morning person wakes up next calendar day)
@@ -175,6 +209,10 @@ class SilverLayer:
         df.loc[~df["efficiency"].between(0, 100), "efficiency"] = np.nan
         df["total_sleep_min"] = pd.to_numeric(df["total_sleep_min"], errors="coerce")
         df.loc[~df["total_sleep_min"].between(60, 900), "total_sleep_min"] = np.nan
+        df["rem_min"] = pd.to_numeric(df.get("rem_min"), errors="coerce")
+        df["light_min"] = pd.to_numeric(df.get("light_min"), errors="coerce")
+        if "deep_min" not in df.columns:
+            df["deep_min"] = (df["total_sleep_min"] - df["rem_min"] - df["light_min"]).clip(lower=0)
         df = df.drop_duplicates(subset=["date"], keep="last")
         cols = ["date", "start_time_utc", "end_time_utc", "total_sleep_min",
                 "rem_min", "deep_min", "light_min", "efficiency"]
@@ -184,6 +222,12 @@ class SilverLayer:
         df = b.get("samsung_heart_rate", pd.DataFrame()).copy()
         if df.empty:
             return df
+        df = df.rename(columns={
+            "com.samsung.health.heart_rate.start_time": "start_time",
+            "com.samsung.health.heart_rate.end_time": "end_time",
+            "com.samsung.health.heart_rate.heart_rate": "heart_rate",
+            "com.samsung.health.heart_rate.heart_beat_count": "heart_beat_count",
+        })
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
         df["end_time_utc"] = _parse_samsung_ts(df["end_time"])
         df["date"] = df["start_time_utc"].dt.tz_convert("Europe/Copenhagen").dt.date.astype(str)
@@ -198,7 +242,9 @@ class SilverLayer:
         df = b.get("samsung_steps", pd.DataFrame()).copy()
         if df.empty:
             return df
-        df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
+        # Real exports use "day_time" (epoch ms) instead of "start_time"
+        time_col = "start_time" if "start_time" in df.columns else "day_time"
+        df["start_time_utc"] = _parse_samsung_ts(df[time_col])
         df["date"] = df["start_time_utc"].dt.tz_convert("Europe/Copenhagen").dt.date.astype(str)
         df = df.rename(columns={
             "count": "steps",
@@ -217,6 +263,11 @@ class SilverLayer:
         df = b.get("samsung_blood_oxygen", pd.DataFrame()).copy()
         if df.empty:
             return df
+        df = df.rename(columns={
+            "com.samsung.health.oxygen_saturation.start_time": "start_time",
+            "com.samsung.health.oxygen_saturation.spo2": "spo2",
+            "com.samsung.health.oxygen_saturation.min": "min_spo2",
+        })
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
         df["date"] = df["start_time_utc"].dt.tz_convert("Europe/Copenhagen").dt.date.astype(str)
         df["spo2"] = pd.to_numeric(df["spo2"], errors="coerce")
@@ -231,19 +282,36 @@ class SilverLayer:
         df = b.get("samsung_stress", pd.DataFrame()).copy()
         if df.empty:
             return df
+        # Real exports report the stress value in "score" — no "stress_level" column
+        if "stress_level" not in df.columns and "score" in df.columns:
+            df = df.rename(columns={"score": "stress_level"})
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
         df["date"] = df["start_time_utc"].dt.tz_convert("Europe/Copenhagen").dt.date.astype(str)
         df["stress_level"] = pd.to_numeric(df["stress_level"], errors="coerce")
         df.loc[~df["stress_level"].between(0, 100), "stress_level"] = np.nan
         df = df.dropna(subset=["stress_level"])
         df = df.drop_duplicates(subset=["start_time_utc"])
-        cols = ["date", "start_time_utc", "stress_level", "score"]
+        cols = ["date", "start_time_utc", "stress_level"]
         return df[[c for c in cols if c in df.columns]].reset_index(drop=True)
 
     def _transform_calories(self, b: dict) -> pd.DataFrame:
         df = b.get("samsung_calories", pd.DataFrame()).copy()
         if df.empty:
             return df
+        # Real exports use "day_time" and split the daily burn into
+        # active/rest/TEF components instead of one "calorie" total.
+        prefix = "com.samsung.shealth.calories_burned."
+        df = df.rename(columns={
+            f"{prefix}day_time": "start_time",
+            f"{prefix}active_time": "active_time",
+            f"{prefix}active_calorie": "active_calorie",
+            f"{prefix}rest_calorie": "rest_calorie",
+            f"{prefix}tef_calorie": "tef_calorie",
+        })
+        if "calorie" not in df.columns:
+            parts = [pd.to_numeric(df[c], errors="coerce").fillna(0)
+                     for c in ("active_calorie", "rest_calorie", "tef_calorie") if c in df.columns]
+            df["calorie"] = sum(parts) if parts else np.nan
         df["start_time_utc"] = _parse_samsung_ts(df["start_time"])
         df["date"] = df["start_time_utc"].dt.tz_convert("Europe/Copenhagen").dt.date.astype(str)
         df["calorie"] = pd.to_numeric(df["calorie"], errors="coerce")
