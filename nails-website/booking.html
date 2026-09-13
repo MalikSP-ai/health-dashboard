@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Book tid — Rosé Nails & Style</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark">R</span>
+      <span class="brand-name">Rosé Nails <em>& Style</em></span>
+    </a>
+    <nav class="main-nav">
+      <a href="index.html">Forside</a>
+      <a href="services.html">Behandlinger</a>
+      <a href="shop.html">Shop</a>
+      <a href="about.html">Om os</a>
+      <a href="booking.html" class="btn btn-ghost active">Book tid</a>
+    </nav>
+    <div class="header-actions">
+      <a href="cart.html" class="cart-link">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6h15l-1.5 9h-13z"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M6 6L5 3H2"/></svg>
+        <span class="cart-count" data-cart-count>0</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="section">
+    <div class="container booking-layout">
+      <div>
+        <span class="eyebrow">Reservér</span>
+        <h1>Book en tid</h1>
+        <p class="lede">Udfyld formularen, så bekræfter vi din tid inden for 24 timer.</p>
+        <form class="booking-form" onsubmit="event.preventDefault(); document.getElementById('booking-success').hidden=false; this.reset();">
+          <label>Navn<input type="text" required></label>
+          <label>E-mail<input type="email" required></label>
+          <label>Telefon<input type="tel" required></label>
+          <label>Behandling
+            <select required>
+              <option value="">Vælg behandling…</option>
+              <option>Klassisk manicure — 249 kr.</option>
+              <option>Gel-negle — 399 kr.</option>
+              <option>Akrylnegle — 549 kr.</option>
+              <option>Spa-pedicure — 449 kr.</option>
+              <option>Bryllupspakke — 1.199 kr.</option>
+            </select>
+          </label>
+          <label>Dato<input type="date" required></label>
+          <label>Ønsket tidspunkt
+            <select required>
+              <option>10:00</option><option>11:00</option><option>12:00</option>
+              <option>13:00</option><option>14:00</option><option>15:00</option>
+              <option>16:00</option><option>17:00</option>
+            </select>
+          </label>
+          <label class="span-2">Kommentar (valgfri)<textarea rows="3"></textarea></label>
+          <button type="submit" class="btn btn-primary span-2">Send booking</button>
+        </form>
+        <p id="booking-success" class="success-banner" hidden>Tak! Vi sender en bekræftelse på e-mail så hurtigt som muligt.</p>
+      </div>
+      <aside class="salon-info">
+        <h3>Salonens åbningstider</h3>
+        <ul>
+          <li>Man–Fre <span>10 — 18</span></li>
+          <li>Lørdag <span>10 — 16</span></li>
+          <li>Søndag <span>Lukket</span></li>
+        </ul>
+        <h3>Find os</h3>
+        <p>Nørrebrogade 42<br/>2200 København N</p>
+        <p>+45 22 33 44 55<br/>hej@rosenails.dk</p>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-bottom"><span>© 2026 Rosé Nails & Style</span></div>
+</footer>
+
+<script src="js/cart.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

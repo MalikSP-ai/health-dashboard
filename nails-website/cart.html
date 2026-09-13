@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kurv — Rosé Nails & Style</title>
+<link rel="stylesheet" href="css/styles.css" />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark">R</span>
+      <span class="brand-name">Rosé Nails <em>& Style</em></span>
+    </a>
+    <nav class="main-nav">
+      <a href="index.html">Forside</a>
+      <a href="services.html">Behandlinger</a>
+      <a href="shop.html">Shop</a>
+      <a href="about.html">Om os</a>
+      <a href="booking.html" class="btn btn-ghost">Book tid</a>
+    </nav>
+    <div class="header-actions">
+      <a href="cart.html" class="cart-link active">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 6h15l-1.5 9h-13z"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M6 6L5 3H2"/></svg>
+        <span class="cart-count" data-cart-count>0</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="section">
+    <div class="container">
+      <h1>Din kurv</h1>
+      <div class="cart-layout" data-cart-layout>
+        <div class="cart-lines" data-cart-lines></div>
+        <aside class="cart-summary">
+          <h3>Ordreoversigt</h3>
+          <dl>
+            <div><dt>Subtotal</dt><dd data-cart-subtotal>0 kr.</dd></div>
+            <div><dt>Fragt</dt><dd data-cart-shipping>39 kr.</dd></div>
+            <div class="total"><dt>Total</dt><dd data-cart-total>0 kr.</dd></div>
+          </dl>
+          <button class="btn btn-primary btn-block" data-checkout>Til betaling</button>
+          <a href="shop.html" class="link-arrow">← Fortsæt shopping</a>
+          <ul class="perks">
+            <li>Fri fragt over 499 kr.</li>
+            <li>30 dages retur</li>
+            <li>Sikker betaling</li>
+          </ul>
+        </aside>
+      </div>
+      <div class="cart-empty" data-cart-empty hidden>
+        <h2>Din kurv er tom</h2>
+        <p>Se vores nye kollektion og find noget smukt.</p>
+        <a href="shop.html" class="btn btn-primary">Til shoppen</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-bottom"><span>© 2026 Rosé Nails & Style</span></div>
+</footer>
+
+<script src="js/products.js"></script>
+<script src="js/cart.js"></script>
+<script src="js/cart-page.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
