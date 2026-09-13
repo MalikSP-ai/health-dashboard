@@ -9,7 +9,7 @@
     return;
   }
 
-  document.title = `${p.name} — Rosé Nails & Style`;
+  document.title = `${p.name} — NAIL`;
   document.querySelector('[data-crumb-name]').textContent = p.name;
 
   const oldPrice = p.oldPrice ? `<span class="old-price">${window.formatPrice(p.oldPrice)}</span>` : '';

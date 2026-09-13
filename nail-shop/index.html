@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NAIL — Streetwear fra teenageren selv</title>
+<meta name="description" content="NAIL. Streetwear, hoodies og sneakers — udvalgt og solgt af Nail. Fri fragt over 499 kr." />
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="site-header">
+  <div class="container header-inner">
+    <a href="index.html" class="brand">
+      <span class="brand-mark">NAIL</span>
+      <span class="brand-tag">/ EST.2026 / CPH</span>
+    </a>
+    <nav class="main-nav" aria-label="Hovednavigation">
+      <a href="index.html" class="active">Forside</a>
+      <a href="shop.html">Shop</a>
+      <a href="about.html">Om Nail</a>
+    </nav>
+    <div class="header-actions">
+      <a href="cart.html" class="cart-link" aria-label="Se kurv">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-13z"/><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M6 6L5 3H2"/></svg>
+        <span class="cart-count" data-cart-count>0</span>
+      </a>
+      <button class="menu-toggle" aria-label="Åbn menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track">
+    <span>Fri fragt over 499 kr.</span>
+    <span>Nyt drop — 24. sept.</span>
+    <span>Pakket og sendt af Nail selv</span>
+    <span>30 dages retur</span>
+    <span>MobilePay + kort</span>
+    <span>Fri fragt over 499 kr.</span>
+    <span>Nyt drop — 24. sept.</span>
+    <span>Pakket og sendt af Nail selv</span>
+    <span>30 dages retur</span>
+    <span>MobilePay + kort</span>
+  </div>
+</div>
+
+<main>
+  <section class="hero">
+    <div class="container hero-inner">
+      <div class="hero-copy">
+        <span class="eyebrow">Drop 01 / 2026</span>
+        <h1>Tøj jeg selv <span class="highlight">ville tage på</span>.</h1>
+        <p class="lede">
+          Hej — jeg hedder Nail. Jeg driver den her lille shop fra mit værelse i København,
+          hvor jeg sælger hoodies, tees, jeans og sneakers jeg selv har fundet, testet og pakket.
+        </p>
+        <div class="hero-actions">
+          <a href="shop.html" class="btn btn-primary">Shop hele kollektionen</a>
+          <a href="shop.html?category=hoodies" class="btn btn-secondary">Se hoodies</a>
+        </div>
+        <div class="hero-meta">
+          <div><span>Solgt sidste uge</span><strong>142 stk.</strong></div>
+          <div><span>Producenter</span><strong>3</strong></div>
+          <div><span>Retur</span><strong>30 dage</strong></div>
+        </div>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <span class="hero-stamp">DROP<br/>01</span>
+        <div class="hero-frame-shadow"></div>
+        <div class="hero-frame"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div class="section-head">
+        <h2>Kategorier</h2>
+        <a href="shop.html" class="link-arrow">Se alt →</a>
+      </div>
+      <div class="category-grid">
+        <a href="shop.html?category=hoodies" class="category-card cat-hoodies">
+          <span class="cat-num">01 / Hoodies & Shirts</span>
+          <div class="cat-swatch"></div>
+          <span class="cat-name">Hoodies</span>
+        </a>
+        <a href="shop.html?category=tees" class="category-card cat-tees">
+          <span class="cat-num">02 / Grafik & Blank</span>
+          <div class="cat-swatch"></div>
+          <span class="cat-name">Tees</span>
+        </a>
+        <a href="shop.html?category=bukser" class="category-card cat-bukser">
+          <span class="cat-num">03 / Denim & Cargo</span>
+          <div class="cat-swatch"></div>
+          <span class="cat-name">Bukser</span>
+        </a>
+        <a href="shop.html?category=jakker" class="category-card cat-jakker">
+          <span class="cat-num">04 / Layering</span>
+          <div class="cat-swatch"></div>
+          <span class="cat-name">Jakker</span>
+        </a>
+        <a href="shop.html?category=caps" class="category-card cat-caps">
+          <span class="cat-num">05 / Caps & Bags</span>
+          <div class="cat-swatch"></div>
+          <span class="cat-name">Accessories</span>
+        </a>
+        <a href="shop.html?category=sko" class="category-card cat-sko">
+          <span class="cat-num">06 / Kicks</span>
+          <div class="cat-swatch"></div>
+          <span class="cat-name">Sneakers</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="container">
+      <div class="section-head">
+        <h2>Nye ind i denne uge</h2>
+        <a href="shop.html" class="link-arrow" style="color:var(--paper);border-color:var(--accent)">Alle nyheder →</a>
+      </div>
+      <div class="product-grid" data-featured-products></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container founder">
+      <div class="founder-visual" aria-hidden="true"></div>
+      <div>
+        <span class="eyebrow">Bag butikken</span>
+        <h2>Nail, 15 år. Driver butikken selv.</h2>
+        <p>
+          Jeg startede at sælge tøj til vennerne og deres søskende. Nu sender jeg pakker
+          i hele landet. Alt bliver pakket ved skrivebordet og afleveret på posthuset før skole.
+        </p>
+        <blockquote>Ingen mellemmænd. Ingen bullshit. Bare gode fits.</blockquote>
+        <a href="about.html" class="btn btn-secondary">Læs hele historien</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt">
+    <div class="container newsletter-inner">
+      <div>
+        <span class="eyebrow" style="border-color:var(--accent);color:var(--accent)">Newsletter</span>
+        <h2>Vær først på nye drops.</h2>
+        <p>Én mail om ugen. Kun når der lander noget nyt. Ingen spam — det lover jeg.</p>
+      </div>
+      <form class="newsletter-form" onsubmit="event.preventDefault(); this.querySelector('button').textContent='Tak — tjek din inbox'; this.reset()">
+        <input type="email" required placeholder="din@mail.dk" aria-label="E-mail" />
+        <button type="submit" class="btn btn-primary">Bliv notified</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-grid">
+    <div>
+      <span class="brand-mark">NAIL</span>
+      <p>Sendt fra et værelse i København<br/>hej@nailshop.dk<br/>+45 22 33 44 55</p>
+    </div>
+    <div>
+      <h4>Shop</h4>
+      <a href="shop.html?category=hoodies">Hoodies</a>
+      <a href="shop.html?category=tees">Tees</a>
+      <a href="shop.html?category=bukser">Bukser</a>
+      <a href="shop.html?category=sko">Sneakers</a>
+    </div>
+    <div>
+      <h4>Info</h4>
+      <a href="about.html">Om Nail</a>
+      <a href="#">Kontakt</a>
+      <a href="#">Presse</a>
+    </div>
+    <div>
+      <h4>Hjælp</h4>
+      <a href="#">Levering</a>
+      <a href="#">Retur</a>
+      <a href="#">Størrelser</a>
+      <a href="#">Handelsbetingelser</a>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span>© 2026 NAIL — Est. i et teenageværelse</span>
+    <span>Visa · Mastercard · MobilePay · Klarna</span>
+  </div>
+</footer>
+
+<script src="js/products.js"></script>
+<script src="js/cart.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
